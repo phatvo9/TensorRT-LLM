@@ -524,7 +524,7 @@ class HarmonyAdapter:
 
         content = self.collect_content(assistant_msg)
         tool_calls = assistant_msg.get("tool_calls", [])
-        reasoning_content = assistant_msg.get("reasoning_content", "")
+        reasoning_content = assistant_msg.get("reasoning_content") or ""
 
         messages: list[Message] = []
 
