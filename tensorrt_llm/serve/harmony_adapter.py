@@ -6,7 +6,7 @@ import re
 import time
 import traceback
 import uuid
-from typing import Any, List, Literal, Tuple
+from typing import Any, List, Literal, Optional, Tuple, Union
 
 from openai_harmony import (Author, Conversation, DeveloperContent,
                             HarmonyEncodingName, HarmonyError, Message,
@@ -1532,11 +1532,33 @@ def get_harmony_adapter() -> HarmonyAdapter:
     return _SERVE_HARMONY_ADAPTER
 
 
+def _truncate_at_stop(content: Optional[str],
+                      stop: Optional[Union[str, List[str]]]) -> Tuple[Optional[str], bool]:
+    """Truncate content at the first occurrence of any stop sequence.
+    Returns (truncated_content, was_truncated)."""
+    if not content or not stop:
+        return content, False
+    stops = [stop] if isinstance(stop, str) else stop
+    earliest_pos = len(content)
+    for s in stops:
+        pos = content.find(s)
+        if pos != -1 and pos < earliest_pos:
+            earliest_pos = pos
+    if earliest_pos < len(content):
+        return content[:earliest_pos], True
+    return content, False
+
+
+# Track accumulated streaming content per request for stop sequence detection
+_streaming_content_buffer: dict[str, str] = {}
+
+
 def handle_streaming_response(tools: List[ChatCompletionToolsParam],
                               tool_choice: str, result: GenerationResult,
                               model: str, request_id: str, done: bool,
                               num_prompt_tokens: int,
-                              first_iteration: bool) -> List[str]:
+                              first_iteration: bool,
+                              stop: Optional[Union[str, List[str]]] = None) -> List[str]:
     output = result.outputs[0]
 
     # Convert tools to dictionary format for harmony adapter (standard pattern)
@@ -1570,6 +1592,17 @@ def handle_streaming_response(tools: List[ChatCompletionToolsParam],
     try:
         res = []
         if done:
+            _streaming_content_buffer.pop(request_id, None)
+            # Process any remaining tokens in the final batch before sending finish
+            if output.token_ids_diff:
+                final_deltas, _ = harmony_adapter.create_openai_streaming_response(
+                    request_id=request_id,
+                    tokens=output.token_ids_diff,
+                    available_tools=tools_for_parser,
+                    model_name=model,
+                    tool_choice=tool_choice)
+                res.extend(final_deltas)
+
             # Send final message with finish_reason
             final_response = ChatCompletionStreamResponse(
                 model=model,
@@ -1610,9 +1643,48 @@ def handle_streaming_response(tools: List[ChatCompletionToolsParam],
                     exclude_none=True)
                 res.append(f"data: {response_json}\n\n")
 
+            # Apply stop sequence truncation on streaming content deltas
+            if stop and responses:
+                filtered_responses = []
+                stop_triggered = False
+                for resp_str in responses:
+                    if stop_triggered:
+                        break
+                    # Parse the SSE data to check for content deltas
+                    if resp_str.startswith("data: "):
+                        try:
+                            resp_data = json.loads(resp_str[6:].strip())
+                            choices = resp_data.get("choices", [])
+                            if choices:
+                                delta = choices[0].get("delta", {})
+                                content = delta.get("content")
+                                if content:
+                                    buf = _streaming_content_buffer.get(request_id, "")
+                                    buf += content
+                                    truncated, was_truncated = _truncate_at_stop(buf, stop)
+                                    if was_truncated:
+                                        # Calculate the new delta content
+                                        prev_len = len(_streaming_content_buffer.get(request_id, ""))
+                                        new_content = truncated[prev_len:]
+                                        if new_content:
+                                            delta["content"] = new_content
+                                            resp_str = f"data: {json.dumps(resp_data)}\n\n"
+                                            filtered_responses.append(resp_str)
+                                        stop_triggered = True
+                                        _streaming_content_buffer.pop(request_id, None)
+                                        continue
+                                    _streaming_content_buffer[request_id] = buf
+                        except (json.JSONDecodeError, KeyError, IndexError):
+                            pass
+                    filtered_responses.append(resp_str)
+                responses = filtered_responses
+                if stop_triggered:
+                    should_stop = True
+
             res.extend(responses)
 
             if should_stop:
+                _streaming_content_buffer.pop(request_id, None)
                 end_streaming(res)
                 result.abort()
 
@@ -1622,13 +1694,15 @@ def handle_streaming_response(tools: List[ChatCompletionToolsParam],
         logger.error(f"Failed to create OpenAI streaming response: {e}")
         logger.debug(f"Streaming error details: {traceback.format_exc()}")
         # Clean up state
+        _streaming_content_buffer.pop(request_id, None)
         harmony_adapter.cleanup_stream_state(request_id)
         raise e
 
 
 def handle_non_streaming_response(tools: List[ChatCompletionToolsParam],
                                   tool_choice: str, outputs: List, model: str,
-                                  num_prompt_tokens: int):
+                                  num_prompt_tokens: int,
+                                  stop: Optional[Union[str, List[str]]] = None):
     """Handle non-streaming response with harmony format."""
     # Parse harmony output to OpenAI format
     # Convert tools to dictionary format for harmony adapter (standard pattern)
@@ -1657,6 +1731,13 @@ def handle_non_streaming_response(tools: List[ChatCompletionToolsParam],
         # CONVERTED OUTPUT (after harmony to openai conversion)
         logger.debug(
             f"✅ CONVERTED OUTPUT: {json.dumps(parsed_output, indent=2)}")
+
+        # Apply stop sequence truncation on extracted content
+        if stop and "content" in parsed_output and parsed_output["content"]:
+            truncated, was_truncated = _truncate_at_stop(parsed_output["content"], stop)
+            if was_truncated:
+                parsed_output["content"] = truncated
+                output.finish_reason = "stop"
 
         # Create response message
         response_message = _create_response_message(parsed_output)

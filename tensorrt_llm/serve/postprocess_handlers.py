@@ -557,6 +557,7 @@ class ChatCompletionPostprocArgs(PostprocArgs):
                                 ChatCompletionNamedToolChoiceParam]]
     request_id: Optional[int] = None
     chat_template_kwargs: Optional[dict[str, Any]] = None
+    stop: Optional[Union[str, List[str]]] = None
 
     @classmethod
     def from_request(cls, request: ChatCompletionRequest):
@@ -565,6 +566,7 @@ class ChatCompletionPostprocArgs(PostprocArgs):
             tools=request.tools,
             tool_choice=request.tool_choice,
             chat_template_kwargs=request.chat_template_kwargs,
+            stop=request.stop,
         )
 
 
@@ -578,6 +580,7 @@ def chat_harmony_post_processor(
         outputs=rsp.outputs,
         model=args.model,
         num_prompt_tokens=args.num_prompt_tokens,
+        stop=args.stop,
     )
     return response
 
@@ -594,6 +597,7 @@ def chat_harmony_streaming_post_processor(
         done=rsp._done,
         num_prompt_tokens=args.num_prompt_tokens,
         first_iteration=args.first_iteration,
+        stop=args.stop,
     )
     args.first_iteration = False
     return response
