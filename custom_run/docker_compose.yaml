@@ -1,0 +1,25 @@
+services:
+  trtllm-serve:
+    build:
+      context: .
+      dockerfile: custom_run/Dockerfile.local
+    image: trtllm-gptoss-patched
+    shm_size: 32g
+    ipc: host
+    network_mode: host
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface
+      - ./custom_run/configs/gptoss120b/eagle3-tp1.yaml:/app/config.yaml:ro
+    command: >
+      trtllm-serve openai/gpt-oss-120b
+      --host 0.0.0.0
+      --port 23339
+      --trust_remote_code
+      --config /app/config.yaml
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

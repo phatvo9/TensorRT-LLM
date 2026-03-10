@@ -1,0 +1,34 @@
+FROM nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc6
+
+# Override the installed tensorrt_llm Python package with our custom fork,
+# while preserving compiled C++/CUDA bindings (.so) and libs/ from the base image.
+#
+# Build context: /home/zeiler/phat/Phat_TensorRT-LLM
+# Build command:
+#   docker build -f custom_run/Dockerfile.local -t trtllm-gptoss-patched .
+
+ARG SITE=/usr/local/lib/python3.12/dist-packages/tensorrt_llm
+
+# Copy the serve/ directory from the local repo onto the installed package.
+# Only serve/ contains our fixes (openai_protocol.py, harmony_adapter.py,
+# postprocess_handlers.py). Other directories are left as rc6 to avoid
+# binding incompatibilities between rc7 Python code and rc6 compiled bindings.
+COPY tensorrt_llm/serve/ ${SITE}/serve/
+
+ENV TIKTOKEN_RS_CACHE_DIR=/tmp/tiktoken-rs-cache
+ENV TIKTOKEN_PATH=$TIKTOKEN_RS_CACHE_DIR
+ENV TIKTOKEN_ENCODINGS_BASE=$TIKTOKEN_RS_CACHE_DIR
+RUN mkdir -p $TIKTOKEN_RS_CACHE_DIR && \
+    curl -L -o $TIKTOKEN_RS_CACHE_DIR/o200k_base.tiktoken \
+    https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken && \
+    curl -L -o $TIKTOKEN_RS_CACHE_DIR/cl100k_base.tiktoken https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken
+
+# Default environment variables
+ENV TRTLLM_ENABLE_PDL=1
+
+# Default command — override model/port as needed
+# CMD ["trtllm-serve", "openai/gpt-oss-120b", \
+#      "--host", "0.0.0.0", \
+#      "--port", "23339", \
+#      "--trust_remote_code", \
+#      "--config", "/app/config.yaml"]
