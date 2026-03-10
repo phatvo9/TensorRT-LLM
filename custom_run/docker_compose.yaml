@@ -1,7 +1,7 @@
 services:
   trtllm-serve:
     build:
-      context: .
+      context: ..
       dockerfile: custom_run/Dockerfile.local
     image: trtllm-gptoss-patched
     shm_size: 32g
@@ -9,7 +9,7 @@ services:
     network_mode: host
     volumes:
       - ~/.cache/huggingface:/root/.cache/huggingface
-      - ./custom_run/configs/gptoss120b/eagle3-tp1.yaml:/app/config.yaml:ro
+      - ./configs/gptoss120b/eagle3-tp1.yaml:/app/config.yaml:ro
     command: >
       trtllm-serve openai/gpt-oss-120b
       --host 0.0.0.0
