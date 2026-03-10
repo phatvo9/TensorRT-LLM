@@ -53,11 +53,14 @@ from tensorrt_llm.serve.chat_utils import parse_chat_messages_coroutines
 from tensorrt_llm.serve.openai_protocol import (ChatCompletionMessageParam,
                                                 ChatCompletionToolsParam,
                                                 FunctionDefinition,
+                                                InputTokensDetails,
                                                 OpenAIBaseModel,
+                                                OutputTokensDetails,
                                                 ReasoningAssistantMessage,
                                                 ResponseInputOutputItem,
                                                 ResponsesRequest,
                                                 ResponsesResponse,
+                                                ResponseUsage,
                                                 StreamingResponsesResponse,
                                                 UCompletionRequest,
                                                 UCompletionResponse)
@@ -1105,6 +1108,19 @@ def _create_response(
         output_content, output_messages = _create_output_content(
             final_res, reasoning_parser, tool_parser, request.tools)
 
+    # Compute token usage
+    output_tokens = sum(len(output.token_ids) for output in final_res.outputs)
+    input_tokens_count = len(
+        getattr(final_res, 'prompt_token_ids', None) or [])
+    cached = getattr(final_res, 'cached_tokens', 0)
+    usage = ResponseUsage(
+        input_tokens=input_tokens_count,
+        input_tokens_details=InputTokensDetails(cached_tokens=cached),
+        output_tokens=output_tokens,
+        output_tokens_details=OutputTokensDetails(reasoning_tokens=0),
+        total_tokens=input_tokens_count + output_tokens,
+    )
+
     response = ResponsesResponse.from_request(
         request=request,
         sampling_params=sampling_params,
@@ -1112,6 +1128,7 @@ def _create_response(
         created_time=response_creation_time,
         output=output_content,
         status=finish_reason_mapping(final_res.outputs[0].finish_reason),
+        usage=usage,
     )
 
     _responses_debug_log("========== Response ===========")

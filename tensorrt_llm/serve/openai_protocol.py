@@ -936,7 +936,7 @@ class ResponsesRequest(OpenAIBaseModel):
             temperature=temperature,
             top_p=top_p,
             max_tokens=max_tokens,
-            logprobs=self.top_logprobs,
+            logprobs=self.top_logprobs if self.top_logprobs else None,
             stop_token_ids=stop_token_ids,
             guided_decoding=guided_decoding,
         )
@@ -1019,7 +1019,7 @@ class ResponsesResponse(OpenAIBaseModel):
     service_tier: Literal["auto", "default", "flex", "scale", "priority"]
     status: ResponseStatus
     text: Optional[ResponseTextConfig] = None
-    top_logprobs: int
+    top_logprobs: Optional[int] = 0
     truncation: Literal["auto", "disabled"]
     usage: Optional[ResponseUsage] = None
     user: Optional[str] = None
@@ -1056,7 +1056,7 @@ class ResponsesResponse(OpenAIBaseModel):
             service_tier=request.service_tier,
             status=status,
             text=request.text,
-            top_logprobs=sampling_params.logprobs,
+            top_logprobs=sampling_params.logprobs or 0,
             truncation=request.truncation,
             user=request.user,
             usage=usage,

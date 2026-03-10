@@ -8,7 +8,7 @@ services:
     ipc: host
     network_mode: host
     volumes:
-      - ~/.cache/huggingface:/root/.cache/huggingface
+      - /home/zeiler/.cache/huggingface:/root/.cache/huggingface
       - ./configs/gptoss120b/eagle3-tp1.yaml:/app/config.yaml:ro
     command: >
       trtllm-serve openai/gpt-oss-120b
