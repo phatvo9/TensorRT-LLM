@@ -41,6 +41,14 @@ guided_decoding_backend: xgrammar
 reasoning_parser: gpt_oss
 EOF
 
+ENV TIKTOKEN_RS_CACHE_DIR=/tmp/tiktoken-rs-cache
+ENV TIKTOKEN_PATH=$TIKTOKEN_RS_CACHE_DIR
+ENV TIKTOKEN_ENCODINGS_BASE=$TIKTOKEN_RS_CACHE_DIR
+RUN mkdir -p $TIKTOKEN_RS_CACHE_DIR && \
+    curl -L -o $TIKTOKEN_RS_CACHE_DIR/o200k_base.tiktoken \
+    https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken && \
+    curl -L -o $TIKTOKEN_RS_CACHE_DIR/cl100k_base.tiktoken https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken
+
 # Default environment variables
 ENV TRTLLM_ENABLE_PDL=1
 
