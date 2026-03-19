@@ -111,8 +111,16 @@ class HarmonyStreamState:
             prev_channel = self.parser.current_channel
             prev_recipient = self.parser.current_recipient
 
-            # Process the token
-            self.parser.process(token)
+            # Process the token — catch per-token errors to avoid losing the
+            # entire batch when a single token is invalid.
+            try:
+                self.parser.process(token)
+            except (HarmonyError, UnicodeDecodeError, ValueError) as e:
+                logger.warning(
+                    f"HarmonyStreamState: skipping invalid token {token} "
+                    f"(processed {self.tokens_processed} total): {e}"
+                )
+                continue
 
             # Detect channel/recipient transitions AFTER processing each token
             channel_changed = prev_channel != self.parser.current_channel
@@ -158,8 +166,16 @@ class HarmonyStreamState:
             prev_channel = self.parser.current_channel
             prev_recipient = self.parser.current_recipient
 
-            # Process the token
-            self.parser.process(token)
+            # Process the token — catch per-token errors to avoid losing the
+            # entire batch when a single token is invalid.
+            try:
+                self.parser.process(token)
+            except (HarmonyError, UnicodeDecodeError, ValueError) as e:
+                logger.warning(
+                    f"HarmonyStreamState: skipping invalid token {token} "
+                    f"(processed {self.tokens_processed} total): {e}"
+                )
+                continue
 
             # Detect channel/recipient transitions AFTER processing each token
             channel_changed = prev_channel != self.parser.current_channel
@@ -1278,11 +1294,20 @@ class HarmonyAdapter:
             deltas = stream_state.process_token_batch(tokens)
             # logger.info(">> GENERATED DELTAS: %s", deltas)
             return deltas
-        except (HarmonyError, UnicodeDecodeError, ValueError):
+        except (HarmonyError, UnicodeDecodeError, ValueError) as e:
             logger.error(
-                f"Streaming: Failed to process token batch of {len(tokens)} tokens for request {request_id}"
+                f"Streaming: Failed to process token batch of {len(tokens)} tokens for request {request_id}: {e}"
             )
-            logger.debug(f"Problematic streaming tokens: {tokens}")
+            logger.warning(f"Problematic streaming tokens for request {request_id}: {tokens}")
+
+            # Reset the stream state to recover from corrupted parser state.
+            # Without this, every subsequent batch for the same request will
+            # also fail because the parser is left in an inconsistent state.
+            self._stream_states.pop(request_id, None)
+            new_state = self.create_stream_state(request_id, available_tools,
+                                                 tool_choice)
+            # Mark tokens as processed so we don't lose track
+            new_state.tokens_processed = stream_state.tokens_processed
 
             # Return empty deltas to continue processing
             return []
@@ -1315,11 +1340,17 @@ class HarmonyAdapter:
         try:
             messages = stream_state.process_token_batch_to_messages(tokens)
             return messages
-        except (HarmonyError, UnicodeDecodeError, ValueError):
+        except (HarmonyError, UnicodeDecodeError, ValueError) as e:
             logger.error(
-                f"Streaming: Failed to process token batch of {len(tokens)} tokens for request {request_id}",
+                f"Streaming: Failed to process token batch of {len(tokens)} tokens for request {request_id}: {e}",
             )
-            logger.debug(f"Problematic streaming tokens: {tokens}")
+            logger.warning(f"Problematic streaming tokens for request {request_id}: {tokens}")
+
+            # Reset stream state to recover from corrupted parser state
+            self._stream_states.pop(request_id, None)
+            new_state = self.create_stream_state(request_id, available_tools,
+                                                 tool_choice)
+            new_state.tokens_processed = stream_state.tokens_processed
 
             return []
 
