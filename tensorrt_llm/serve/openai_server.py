@@ -1228,16 +1228,21 @@ class OpenAIServer:
             sampling_params = request.to_sampling_params(
                 vocab_size=self.tokenizer.tokenizer.vocab_size,
                 reasoning_parser="gpt_oss")
-            sampling_params.detokenize = False  # Harmony adapter handles detokenization
+            # Use text-based GptOssParser for reasoning/content separation.
+            # skip_special_tokens=False keeps harmony markers (<|channel|>, etc.)
+            # in decoded text so the parser can identify channels.
+            sampling_params.detokenize = True
+            sampling_params.skip_special_tokens = False
             disaggregated_params = to_llm_disaggregated_params(
                 request.disaggregated_params)
             trace_headers = (None if raw_request is None else
                              tracing.extract_trace_headers(raw_request.headers))
 
-            postproc_args = ChatCompletionPostprocArgs.from_request(request)
+            postproc_args = ChatPostprocArgs.from_request(request)
+            postproc_args.reasoning_parser = "gpt_oss"
             postproc_params = PostprocParams(
-                post_processor=chat_harmony_streaming_post_processor
-                if request.stream else chat_harmony_post_processor,
+                post_processor=chat_stream_post_processor
+                if request.stream else chat_response_post_processor,
                 postproc_args=postproc_args,
             )
 

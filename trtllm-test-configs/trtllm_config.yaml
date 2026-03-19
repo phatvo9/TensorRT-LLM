@@ -1,0 +1,26 @@
+max_batch_size: 64
+max_num_tokens: 16384
+max_seq_len: 163841
+tensor_parallel_size: 1
+moe_expert_parallel_size: 1
+trust_remote_code: true
+guided_decoding_backend: xgrammar
+reasoning_parser: gpt_oss
+stream_interval: 10
+num_postprocess_workers: 4
+####
+kv_cache_config:
+  enable_block_reuse: false
+  dtype: 'fp8'
+  free_gpu_memory_fraction: 0.85
+speculative_config:
+  decoding_type: Eagle3
+  max_draft_len: 3
+  speculative_model: nvidia/gpt-oss-120b-Eagle3
+cuda_graph_config:
+  max_batch_size: 64
+sampler_type: TorchSampler
+moe_config:
+  backend: TRTLLM
+attn_backend: "TRTLLM"
+#disable_overlap_scheduler: true

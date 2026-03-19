@@ -105,11 +105,66 @@ class DeepSeekR1Parser(BaseReasoningParser):
             "Unreachable code reached in `DeepSeekR1Parser.parse_delta`")
 
 
+class GptOssParser(BaseReasoningParser):
+    """
+    Reasoning parser for gpt-oss models using the Harmony protocol.
+
+    The model outputs text with Harmony channel markers:
+      <|start|>assistant<|channel|>analysis<|message|>...<|end|>   -> reasoning
+      <|start|>assistant<|channel|>final<|message|>...<|return|>   -> content
+      <|start|>assistant<|channel|>commentary<|message|>...<|end|> -> content (preamble)
+
+    Uses a text-based parser (not token-level) so it is robust against
+    streaming batch boundaries and token-level artifacts.
+    """
+
+    def __init__(self) -> None:
+        from tensorrt_llm.serve.harmony_parser import HarmonyParser
+        self._parser = HarmonyParser()
+
+    def parse(self, text: str) -> ReasoningParserResult:
+        from tensorrt_llm.serve.harmony_parser import HarmonyParser
+        parser = HarmonyParser()
+        events = parser.parse(text)
+        # Flush remaining buffer
+        events += parser.parse("")
+
+        reasoning_parts = []
+        content_parts = []
+        for e in events:
+            if e.event_type == "reasoning":
+                reasoning_parts.append(e.content)
+            elif e.event_type in ("normal", "tool_call"):
+                content_parts.append(e.content)
+
+        return ReasoningParserResult(
+            content="".join(content_parts),
+            reasoning_content="".join(reasoning_parts),
+        )
+
+    def parse_delta(self, delta_text: str) -> ReasoningParserResult:
+        events = self._parser.parse(delta_text)
+
+        reasoning_parts = []
+        content_parts = []
+        for e in events:
+            if e.event_type == "reasoning":
+                reasoning_parts.append(e.content)
+            elif e.event_type in ("normal", "tool_call"):
+                content_parts.append(e.content)
+
+        return ReasoningParserResult(
+            content="".join(content_parts),
+            reasoning_content="".join(reasoning_parts),
+        )
+
+
 class ReasoningParserFactory:
     parsers: dict[str, Type[BaseReasoningParser]] = {
         "deepseek-r1": DeepSeekR1Parser,
         "qwen3": DeepSeekR1Parser,
         "nano-v3": DeepSeekR1Parser,
+        "gpt_oss": GptOssParser,
     }
 
     @staticmethod

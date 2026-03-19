@@ -1287,29 +1287,24 @@ class HarmonyAdapter:
             stream_state = self.create_stream_state(request_id, available_tools,
                                                     tool_choice)
 
-        # decoded_tokens = self.encoding.decode_utf8(tokens)
-        # logger.info(">> DECODED TOKENS: %r", decoded_tokens)
+        # Truncate token list at Harmony stop tokens (<|return|>, <|call|>).
+        # With stream_interval > 1, the executor may batch tokens past the stop
+        # token.  The parser resets after seeing a stop token, so trailing
+        # tokens would be rejected with "expecting start token 200006".
+        stop_tokens = self.encoding.stop_tokens_for_assistant_actions()
+        for idx, tok in enumerate(tokens):
+            if tok in stop_tokens:
+                tokens = tokens[:idx + 1]
+                break
 
         try:
             deltas = stream_state.process_token_batch(tokens)
-            # logger.info(">> GENERATED DELTAS: %s", deltas)
             return deltas
         except (HarmonyError, UnicodeDecodeError, ValueError) as e:
             logger.error(
                 f"Streaming: Failed to process token batch of {len(tokens)} tokens for request {request_id}: {e}"
             )
             logger.warning(f"Problematic streaming tokens for request {request_id}: {tokens}")
-
-            # Reset the stream state to recover from corrupted parser state.
-            # Without this, every subsequent batch for the same request will
-            # also fail because the parser is left in an inconsistent state.
-            self._stream_states.pop(request_id, None)
-            new_state = self.create_stream_state(request_id, available_tools,
-                                                 tool_choice)
-            # Mark tokens as processed so we don't lose track
-            new_state.tokens_processed = stream_state.tokens_processed
-
-            # Return empty deltas to continue processing
             return []
 
     def stateful_stream_harmony_tokens_to_openai_messages(
@@ -1337,6 +1332,13 @@ class HarmonyAdapter:
             stream_state = self.create_stream_state(request_id, available_tools,
                                                     tool_choice)
 
+        # Truncate at stop tokens (same reason as in the deltas path)
+        stop_tokens = self.encoding.stop_tokens_for_assistant_actions()
+        for idx, tok in enumerate(tokens):
+            if tok in stop_tokens:
+                tokens = tokens[:idx + 1]
+                break
+
         try:
             messages = stream_state.process_token_batch_to_messages(tokens)
             return messages
@@ -1345,13 +1347,6 @@ class HarmonyAdapter:
                 f"Streaming: Failed to process token batch of {len(tokens)} tokens for request {request_id}: {e}",
             )
             logger.warning(f"Problematic streaming tokens for request {request_id}: {tokens}")
-
-            # Reset stream state to recover from corrupted parser state
-            self._stream_states.pop(request_id, None)
-            new_state = self.create_stream_state(request_id, available_tools,
-                                                 tool_choice)
-            new_state.tokens_processed = stream_state.tokens_processed
-
             return []
 
     def create_openai_streaming_response(
@@ -1580,6 +1575,23 @@ def _truncate_at_stop(content: Optional[str],
     return content, False
 
 
+def _strip_harmony_tokens_from_sse(sse_lines: List[str]) -> List[str]:
+    """Strip any leaked Harmony special tokens from SSE response lines.
+
+    Uses the token strings defined by the HarmonyAdapter's parser
+    rather than a hand-rolled regex so that the filter stays in sync
+    with the protocol definition.
+    """
+    harmony_adapter = get_harmony_adapter()
+    special_tokens = list(harmony_adapter._harmony_special_tokens.keys())
+    cleaned = []
+    for line in sse_lines:
+        for tok in special_tokens:
+            line = line.replace(tok, '')
+        cleaned.append(line)
+    return cleaned
+
+
 # Track accumulated streaming content per request for stop sequence detection
 _streaming_content_buffer: dict[str, str] = {}
 
@@ -1717,9 +1729,10 @@ def handle_streaming_response(tools: List[ChatCompletionToolsParam],
             if should_stop:
                 _streaming_content_buffer.pop(request_id, None)
                 end_streaming(res)
-                result.abort()
+                if hasattr(result, 'abort'):
+                    result.abort()
 
-        return res
+        return _strip_harmony_tokens_from_sse(res)
 
     except Exception as e:
         logger.error(f"Failed to create OpenAI streaming response: {e}")

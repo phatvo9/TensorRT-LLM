@@ -1,0 +1,28 @@
+services:
+  trtllm-serve:
+    image: nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc7
+    restart: unless-stopped
+    shm_size: "32g"
+    ipc: host
+    network_mode: host
+    environment:
+      HF_TOKEN: ${HF_TOKEN}
+      TIKTOKEN_PATH: /tmp/tiktoken-rs-cache
+      TIKTOKEN_ENCODINGS_BASE: /tmp/tiktoken-rs-cache
+      TIKTOKEN_RS_CACHE_DIR: /tmp/tiktoken-rs-cache
+      TRTLLM_ENABLE_PDL: "0"
+    volumes:
+      - /home/zeiler/.cache/huggingface:/root/.cache/huggingface
+      - .:/config
+      - /home/zeiler/phat/tiktoken-rs-cache:/tmp/tiktoken-rs-cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    command: >
+      trtllm-serve openai/gpt-oss-120b
+      --host 0.0.0.0
+      --port 23339
+      --trust_remote_code
+      --config /config/config.yaml

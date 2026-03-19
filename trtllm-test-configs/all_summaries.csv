@@ -1,0 +1,19 @@
+concurrency,metric,in_tokens,out_tokens,bs,w/o image
+1,Latency per token (sec),1000,1000,1,0.001
+1,Time to first token (sec),1000,1000,1,0.121
+1,Latency per request (sec),1000,1000,1,1.123
+1,Output throughput per request,1000,1000,1,900.623
+1,AA Output throughput per request,1000,1000,1,1011.64
+1,End to end throughput = total toks/ latency per request,1000,1000,1,1969.62
+1,Overall throughput ,1000,1000,1,887.4370843763895
+1,Requests/min,1000,1000,1,53.246
+1,Error rate,1000,1000,1,0.0
+10,Latency per token (sec),1000,1000,1,0.0
+10,Time to first token (sec),1000,1000,1,0.007
+10,Latency per request (sec),1000,1000,1,1.832
+10,Output throughput per request,1000,1000,1,551.497
+10,AA Output throughput per request,1000,1000,1,553.642
+10,End to end throughput = total toks/ latency per request,1000,1000,1,1205.586
+10,Overall throughput ,1000,1000,1,4836.886913359592
+10,Requests/min,1000,1000,1,290.213
+10,Error rate,1000,1000,1,0.0
