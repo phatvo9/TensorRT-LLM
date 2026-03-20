@@ -134,7 +134,11 @@ class GptOssParser(BaseReasoningParser):
         for e in events:
             if e.event_type == "reasoning":
                 reasoning_parts.append(e.content)
-            elif e.event_type in ("normal", "tool_call"):
+            elif e.event_type == "tool_call":
+                # Preserve raw_text so the downstream tool parser can extract
+                # function name and arguments from the Harmony markers.
+                content_parts.append(e.raw_text if e.raw_text else e.content)
+            elif e.event_type == "normal":
                 content_parts.append(e.content)
 
         return ReasoningParserResult(
@@ -150,7 +154,9 @@ class GptOssParser(BaseReasoningParser):
         for e in events:
             if e.event_type == "reasoning":
                 reasoning_parts.append(e.content)
-            elif e.event_type in ("normal", "tool_call"):
+            elif e.event_type == "tool_call":
+                content_parts.append(e.raw_text if e.raw_text else e.content)
+            elif e.event_type == "normal":
                 content_parts.append(e.content)
 
         return ReasoningParserResult(

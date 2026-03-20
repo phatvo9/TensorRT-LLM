@@ -1240,6 +1240,7 @@ class OpenAIServer:
 
             postproc_args = ChatPostprocArgs.from_request(request)
             postproc_args.reasoning_parser = "gpt_oss"
+            postproc_args.tool_parser = "gpt_oss"
             postproc_params = PostprocParams(
                 post_processor=chat_stream_post_processor
                 if request.stream else chat_response_post_processor,

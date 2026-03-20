@@ -213,6 +213,13 @@ def chat_stream_post_processor(rsp: GenerationResultBase,
 
         delta_text = output.text_diff
 
+        # Re-append stripped harmony stop token on the final streaming chunk
+        _HARMONY_STOP_TOKENS = {200012: "<|call|>", 200002: "<|return|>"}
+        if output.finish_reason and args.reasoning_parser == "gpt_oss":
+            stop_text = _HARMONY_STOP_TOKENS.get(output.stop_reason)
+            if stop_text:
+                delta_text = delta_text + stop_text
+
         delta_text, reasoning_delta_text = apply_reasoning_parser(
             args, i, delta_text, True)
 
@@ -315,9 +322,20 @@ def chat_response_post_processor(
         args: ChatPostprocArgs) -> ChatCompletionResponse:
     choices: List[ChatCompletionResponseChoice] = []
     role = args.role
+    # Map harmony stop token IDs to their text forms so the parser can
+    # see the complete block.  The executor strips stop tokens from
+    # output.text, but the HarmonyParser needs them to close blocks.
+    _HARMONY_STOP_TOKENS = {200012: "<|call|>", 200002: "<|return|>"}
+
     for output in rsp.outputs:
+        raw_text = output.text
+        # Re-append stripped harmony stop token so the parser sees complete blocks
+        stop_text = _HARMONY_STOP_TOKENS.get(output.stop_reason)
+        if stop_text and args.reasoning_parser == "gpt_oss":
+            raw_text = raw_text + stop_text
+
         text, reasoning_text = apply_reasoning_parser(args, output.index,
-                                                      output.text, False)
+                                                      raw_text, False)
 
         if args.tool_choice and isinstance(args.tool_choice,
                                            ChatCompletionNamedToolChoiceParam):

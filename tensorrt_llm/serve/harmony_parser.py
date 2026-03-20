@@ -28,12 +28,15 @@ class Token:
     end: int
 
 
-# Structural tokens recognised by the parser
+# Structural tokens recognised by the parser.
+# Some tokenizers decode 200009 as <|reserved_200009|> instead of <|constrain|>,
+# so we recognise both forms.
 _TOKENS = {
     "<|start|>": "START",
     "<|channel|>": "CHANNEL",
     "<|message|>": "MESSAGE",
     "<|constrain|>": "CONSTRAIN",
+    "<|reserved_200009|>": "CONSTRAIN",
     "<|end|>": "END",
     "<|call|>": "CALL",
     "<|return|>": "RETURN",
